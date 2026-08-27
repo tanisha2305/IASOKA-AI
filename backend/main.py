@@ -1,6 +1,7 @@
 import os
 
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import FastAPI, HTTPException, Header, Depends, Security
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from supabase import create_client, Client
@@ -19,7 +20,30 @@ supabase: Client = create_client(
     SUPABASE_URL,
     SUPABASE_KEY
 )
+security = HTTPBearer()
 
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Security(security)
+):
+    token = credentials.credentials
+
+    try:
+        response = supabase.auth.get_user(token)
+
+        if not response.user:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid authentication token"
+            )
+
+        return response.user
+
+    except Exception:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or expired authentication token"
+        )
 # -------------------------
 # FastAPI
 # -------------------------
@@ -66,8 +90,17 @@ def health_check():
 # SIGN UP
 # -------------------------
 
-@app.post("/api/auth/signup")
-def signup(payload: SignupInput):
+@app.post("/api/symptoms")
+def submit_symptoms(
+    payload: SymptomInput,
+    current_user=Depends(get_current_user)
+):
+     result = supabase.table("symptom_reports").insert({
+        "user_id": str(current_user.id),
+        "symptom_text": payload.symptom_text,
+    }).execute()
+
+    return {"report": result.data}
 
     try:
         result = supabase.auth.sign_up({
