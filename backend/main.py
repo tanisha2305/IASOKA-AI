@@ -1,5 +1,6 @@
 import os
-from fastapi import FastAPI, HTTPException
+
+from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from supabase import create_client, Client
@@ -20,7 +21,7 @@ supabase: Client = create_client(
 )
 
 # -------------------------
-# FastAPI app
+# FastAPI
 # -------------------------
 
 app = FastAPI(title="IASOKA-AI API")
@@ -33,11 +34,10 @@ app.add_middleware(
 )
 
 # -------------------------
-# Request models
+# Models
 # -------------------------
 
 class SymptomInput(BaseModel):
-    user_id: str
     symptom_text: str
 
 
@@ -80,10 +80,10 @@ def signup(payload: SignupInput):
             "user": result.user.model_dump() if result.user else None
         }
 
-    except Exception as e:
+    except Exception:
         raise HTTPException(
             status_code=400,
-            detail=str(e)
+            detail="Signup failed"
         )
 
 
@@ -102,14 +102,58 @@ def login(payload: LoginInput):
 
         return {
             "message": "Login successful",
-            "access_token": result.session.access_token if result.session else None,
-            "user": result.user.model_dump() if result.user else None
+            "access_token": (
+                result.session.access_token
+                if result.session else None
+            ),
+            "user": (
+                result.user.model_dump()
+                if result.user else None
+            )
         }
 
-    except Exception as e:
+    except Exception:
         raise HTTPException(
             status_code=401,
             detail="Invalid email or password"
+        )
+
+
+# -------------------------
+# AUTHENTICATE USER
+# -------------------------
+
+def get_current_user(authorization: str):
+
+    if not authorization:
+        raise HTTPException(
+            status_code=401,
+            detail="Authorization header required"
+        )
+
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid authorization format"
+        )
+
+    token = authorization.split(" ", 1)[1]
+
+    try:
+        user_response = supabase.auth.get_user(token)
+
+        if not user_response.user:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid or expired token"
+            )
+
+        return user_response.user
+
+    except Exception:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or expired token"
         )
 
 
@@ -118,11 +162,16 @@ def login(payload: LoginInput):
 # -------------------------
 
 @app.post("/api/symptoms")
-def submit_symptoms(payload: SymptomInput):
+def submit_symptoms(
+    payload: SymptomInput,
+    authorization: str = Header(default=None)
+):
+
+    user = get_current_user(authorization)
 
     try:
         result = supabase.table("symptom_reports").insert({
-            "user_id": payload.user_id,
+            "user_id": user.id,
             "symptom_text": payload.symptom_text,
         }).execute()
 
