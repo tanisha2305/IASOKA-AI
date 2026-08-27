@@ -95,7 +95,7 @@ def submit_symptoms(
     payload: SymptomInput,
     current_user=Depends(get_current_user)
 ):
-     result = supabase.table("symptom_reports").insert({
+    result = supabase.table("symptom_reports").insert({
         "user_id": str(current_user.id),
         "symptom_text": payload.symptom_text,
     }).execute()
