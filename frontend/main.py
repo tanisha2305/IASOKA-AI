@@ -3,7 +3,7 @@ IASOKA-AI: Universal Healthcare & Medical Triage Platform
 Interactive Python Frontend (Streamlit)
 Connects directly to the FastAPI backend at http://localhost:8000
 """
-
+BACKEND_URL = "https://iasoka-ai-backend.onrender.com"
 import streamlit as st
 import requests
 import json
