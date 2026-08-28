@@ -19,7 +19,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-BACKEND_URL = "http://localhost:8000"
+BACKEND_URL = "https://iasoka-ai-backend.onrender.com"
 
 # -----------------------------------------------------------------------------
 # Session State Initialization
