@@ -101,7 +101,7 @@ st.markdown("""
 # -----------------------------------------------------------------------------
 def check_backend_status():
     try:
-        res = requests.get(f"{BACKEND_URL}/api/health", timeout=1.5)
+        res = requests.get(BACKEND_URL, timeout=1.5)
         return res.status_code == 200
     except Exception:
         return False
