@@ -265,7 +265,7 @@ with st.sidebar:
     st.markdown("---")
     is_online = check_backend_status()
     if is_online:
-        st.success("● FastAPI Backend: Connected (`http://localhost:8000`)")
+        st.success("● FastAPI Backend: Connected")
     else:
         st.info("○ Standalone Demo Mode Active (FastAPI offline)")
         
