@@ -10,3 +10,5 @@ bash
 streamlit run frontend_app.py Open in your browser: It will automatically open at 👉 http://localhost:8501.
 
 The file is also saved on disk at: frontend_app.py .
+
+https://iasoka-ai-djg2fbatoxqx8vsgd6ay9f.streamlit.app/
