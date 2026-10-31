@@ -1,510 +1,714 @@
-"""
-IASOKA-AI: Universal Healthcare & Medical Triage Platform
-Interactive Python Frontend (Streamlit)
-Connects directly to the FastAPI backend at http://localhost:8000
-"""
-BACKEND_URL = "https://iasoka-ai-backend.onrender.com"
+
 import streamlit as st
 import requests
-import json
 from datetime import datetime
+from urllib.parse import quote_plus
 
-# -----------------------------------------------------------------------------
-# Configuration & Backend Base URL
-# -----------------------------------------------------------------------------
+# ============================================================
+# IASOKA-AI | INDIA EDITION
+# Patient-facing healthcare assistance prototype
+# ============================================================
+
+BACKEND_URL = "https://iasoka-ai-backend.onrender.com"
+
 st.set_page_config(
-    page_title="IASOKA-AI | Universal Healthcare Portal",
+    page_title="IASOKA-AI | Healthcare Assistant",
     page_icon="✚",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-BACKEND_URL = "https://iasoka-ai-backend.onrender.com"
+# -------------------- SESSION STATE -------------------------
 
-# -----------------------------------------------------------------------------
-# Session State Initialization
-# -----------------------------------------------------------------------------
-if "auth_token" not in st.session_state:
-    st.session_state.auth_token = None
-if "user_info" not in st.session_state:
-    st.session_state.user_info = None
-if "age_mode" not in st.session_state:
-    st.session_state.age_mode = "Standard"
-if "local_history" not in st.session_state:
-    st.session_state.local_history = [
-        {
-            "id": "demo-1",
-            "symptom_text": "Mild headache and dry cough for 2 days",
-            "body_part": "Head & Face",
-            "severity": 4,
-            "duration": "1-2 days",
-            "triage": "Home Care & Monitoring",
-            "created_at": "Yesterday"
-        }
-    ]
+defaults = {
+    "age_mode": "Standard",
+    "location": "",
+    "history": [],
+    "last_triage": None,
+    "last_symptoms": "",
+    "last_specialty": "General Physician",
+    "patient_name": "",
+    "blood_group": "Not provided",
+    "allergies": "",
+    "medications": "",
+    "emergency_contact": ""
+}
 
-# -----------------------------------------------------------------------------
-# Custom CSS for Multi-Age Accessibility & Theming
-# -----------------------------------------------------------------------------
+for key, value in defaults.items():
+    if key not in st.session_state:
+        st.session_state[key] = value
+
+# -------------------- DESIGN -------------------------------
+
 st.markdown("""
 <style>
-    .main-header { font-weight: 900; letter-spacing: -0.5px; }
-    .emergency-banner {
-        background-color: #dc2626;
-        color: white;
-        padding: 12px 18px;
-        border-radius: 12px;
-        font-weight: 700;
-        margin-bottom: 20px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-    }
-    .card-box {
-        background-color: #ffffff;
-        border: 1px solid #e2e8f0;
-        border-radius: 16px;
-        padding: 20px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.03);
-        margin-bottom: 16px;
-    }
-    .senior-text {
-        font-size: 1.25rem !important;
-        line-height: 1.8 !important;
-    }
-    .kid-bubble {
-        background-color: #ecfdf5;
-        border: 2px solid #a7f3d0;
-        border-radius: 20px;
-        padding: 18px;
-        margin-bottom: 20px;
-    }
-    .triage-badge {
-        display: inline-block;
-        padding: 4px 12px;
-        border-radius: 9999px;
-        font-size: 0.8rem;
-        font-weight: 800;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }
-    .badge-emergency { background-color: #fee2e2; color: #b91c1c; border: 1px solid #f87171; }
-    .badge-urgent { background-color: #fef3c7; color: #b45309; border: 1px solid #fbbf24; }
-    .badge-doctor { background-color: #e0e7ff; color: #4338ca; border: 1px solid #818cf8; }
-    .badge-self { background-color: #d1fae5; color: #047857; border: 1px solid #34d399; }
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap');
+
+html, body, [class*="css"] {
+    font-family: 'DM Sans', sans-serif;
+}
+.stApp {
+    background: #f5f8fc;
+    color: #172b4d;
+}
+section[data-testid="stSidebar"] {
+    background: #10243b;
+}
+section[data-testid="stSidebar"] * {
+    color: #edf5ff !important;
+}
+.main-title {
+    font-family: 'Manrope', sans-serif;
+    font-size: 2.5rem;
+    font-weight: 800;
+    color: #10243b;
+    letter-spacing: -1.5px;
+    margin-bottom: 0;
+}
+.sub-title {
+    color: #64748b;
+    font-size: 1rem;
+    margin-top: 4px;
+}
+.hero {
+    background: linear-gradient(115deg,#10243b,#164e63);
+    padding: 28px;
+    border-radius: 20px;
+    color: white;
+    margin: 12px 0 22px 0;
+}
+.hero h2 {color:white; margin:0; font-size:1.8rem;}
+.hero p {color:#d7e9f3; margin:8px 0 0 0;}
+.emergency {
+    background: #fff0f0;
+    border: 1px solid #fecaca;
+    border-left: 5px solid #dc2626;
+    border-radius: 14px;
+    padding: 16px 18px;
+    margin: 16px 0;
+}
+.emergency h3 {color:#991b1b; margin:0 0 5px 0;}
+.emergency p {color:#7f1d1d; margin:0;}
+.metric-card {
+    background:white;
+    border:1px solid #e5edf5;
+    border-radius:16px;
+    padding:18px;
+    min-height:110px;
+    box-shadow:0 4px 15px rgba(16,36,59,.04);
+}
+.metric-label {color:#64748b; font-size:.85rem;}
+.metric-value {color:#10243b; font-size:1.5rem; font-weight:800;}
+.panel {
+    background:white;
+    border:1px solid #e5edf5;
+    border-radius:18px;
+    padding:20px;
+    margin-bottom:14px;
+}
+.small-muted {color:#64748b; font-size:.88rem;}
+.result-emergency {
+    background:#fff1f2;
+    border-left:5px solid #dc2626;
+    padding:20px;
+    border-radius:14px;
+}
+.result-urgent {
+    background:#fff7ed;
+    border-left:5px solid #ea580c;
+    padding:20px;
+    border-radius:14px;
+}
+.result-doctor {
+    background:#eff6ff;
+    border-left:5px solid #2563eb;
+    padding:20px;
+    border-radius:14px;
+}
+.result-self {
+    background:#ecfdf5;
+    border-left:5px solid #059669;
+    padding:20px;
+    border-radius:14px;
+}
+.stButton>button {
+    border-radius:10px;
+    font-weight:700;
+    min-height:42px;
+}
+div[data-testid="stMetric"] {
+    background:white;
+    border:1px solid #e5edf5;
+    padding:14px;
+    border-radius:14px;
+}
+footer {visibility:hidden;}
 </style>
 """, unsafe_allow_html=True)
 
+# -------------------- HELPERS -------------------------------
 
-# -----------------------------------------------------------------------------
-# API Helper Functions
-# -----------------------------------------------------------------------------
-def check_backend_status():
+def backend_status():
     try:
-        res = requests.get(BACKEND_URL, timeout=1.5)
-        return res.status_code == 200
+        r = requests.get(BACKEND_URL, timeout=5)
+        return r.status_code == 200
     except Exception:
         return False
 
-def api_login(email, password):
-    try:
-        res = requests.post(f"{BACKEND_URL}/api/auth/login", json={"email": email, "password": password}, timeout=3)
-        if res.status_code == 200:
-            data = res.json()
-            st.session_state.auth_token = data.get("access_token", "guest-demo-token")
-            st.session_state.user_info = data.get("user", {"email": email})
-            return True, "Login successful!"
-        return False, res.json().get("detail", "Login failed")
-    except Exception:
-        # Fallback for smooth local demo
-        st.session_state.auth_token = "guest-demo-token"
-        st.session_state.user_info = {"email": email, "user_metadata": {"full_name": email.split("@")[0]}}
-        return True, "Connected in Demo Mode"
 
-def api_signup(email, password, full_name, age_group):
-    try:
-        res = requests.post(f"{BACKEND_URL}/api/auth/signup", json={
-            "email": email, "password": password, "full_name": full_name, "age_group": age_group
-        }, timeout=3)
-        if res.status_code == 200:
-            data = res.json()
-            st.session_state.auth_token = data.get("access_token", "guest-demo-token")
-            st.session_state.user_info = data.get("user", {"email": email})
-            return True, "Signup successful!"
-        return False, res.json().get("detail", "Signup failed")
-    except Exception:
-        st.session_state.auth_token = "guest-demo-token"
-        st.session_state.user_info = {"email": email, "user_metadata": {"full_name": full_name}}
-        return True, "Registered in Demo Mode"
-
-def api_submit_symptoms(symptom_text, body_part, severity, duration, age_group):
-    headers = {"Content-Type": "application/json"}
-    if st.session_state.auth_token:
-        headers["Authorization"] = f"Bearer {st.session_state.auth_token}"
-    
+def save_symptom(symptoms, region, severity, duration):
     payload = {
-        "symptom_text": symptom_text,
-        "body_part": body_part,
+        "symptom_text": symptoms,
+        "body_part": region,
         "severity": severity,
         "duration": duration,
-        "age_group": age_group.lower()
+        "age_group": st.session_state.age_mode.lower()
     }
-    
     try:
-        res = requests.post(f"{BACKEND_URL}/api/symptoms", json=payload, headers=headers, timeout=3)
-        if res.status_code == 200:
-            return res.json()
+        r = requests.post(
+            f"{BACKEND_URL}/api/symptoms",
+            json=payload,
+            timeout=8
+        )
+        if r.status_code == 200:
+            return True
     except Exception:
         pass
-    
-    # Save locally to session
-    new_entry = {
-        "id": f"rep-{len(st.session_state.local_history)+1}",
-        "symptom_text": symptom_text,
-        "body_part": body_part,
-        "severity": severity,
-        "duration": duration,
-        "created_at": datetime.now().strftime("%b %d, %H:%M")
-    }
-    st.session_state.local_history.insert(0, new_entry)
-    return {"message": "Saved to session", "report": [new_entry]}
+    return False
 
-def api_get_facilities(facility_type=None):
-    mock_facilities = [
-        {"name": "St. Jude Children & General Hospital", "type": "Hospital", "address": "742 Evergreen Terrace", "phone": "(555) 019-2831", "emergency_24_7": True, "rating": 4.9, "wait_time": "15 mins"},
-        {"name": "Sunrise Senior & Family Urgent Care", "type": "Urgent Care", "address": "1204 Pine Valley Blvd", "phone": "(555) 832-1920", "emergency_24_7": True, "rating": 4.8, "wait_time": "10 mins"},
-        {"name": "Little Stars Pediatric Health Clinic", "type": "Pediatrics", "address": "450 Blossom Hill Rd", "phone": "(555) 441-9921", "emergency_24_7": False, "rating": 4.95, "wait_time": "Appointments"},
-        {"name": "Metro Health 24/7 Community Pharmacy", "type": "Pharmacy", "address": "880 Central Parkway", "phone": "(555) 302-8811", "emergency_24_7": True, "rating": 4.7, "wait_time": "5 mins"},
-        {"name": "Hope Valley Specialized Geriatric Clinic", "type": "Clinic", "address": "301 Wellness Drive", "phone": "(555) 774-0019", "emergency_24_7": True, "rating": 4.85, "wait_time": "20 mins"}
+
+def identify_specialty(text):
+    t = text.lower()
+
+    rules = [
+        (["chest pain", "palpitation", "heart", "heartbeat"], "Cardiologist"),
+        (["headache", "migraine", "seizure", "numbness", "stroke", "dizziness"], "Neurologist"),
+        (["skin", "rash", "acne", "itch", "eczema", "hair fall"], "Dermatologist"),
+        (["stomach", "abdomen", "gas", "bloating", "diarrhoea", "constipation", "acidity"], "Gastroenterologist"),
+        (["cough", "asthma", "breathing", "lungs", "wheezing"], "Pulmonologist"),
+        (["bone", "joint", "fracture", "knee", "back pain", "sprain"], "Orthopedic Doctor"),
+        (["eye", "vision", "blurred vision"], "Ophthalmologist"),
+        (["ear", "nose", "throat", "sinus"], "ENT Specialist"),
+        (["fever", "infection", "weakness", "fatigue"], "General Physician"),
+        (["period", "pregnancy", "menstrual", "reproductive"], "Gynaecologist")
     ]
-    
-    try:
-        url = f"{BACKEND_URL}/api/facilities"
-        if facility_type and facility_type != "All":
-            url += f"?type={facility_type}"
-        res = requests.get(url, timeout=2)
-        if res.status_code == 200:
-            data = res.json().get("facilities", [])
-            if data: return data
-    except Exception:
-        pass
-    
-    if facility_type and facility_type != "All":
-        return [f for f in mock_facilities if facility_type.lower() in f["type"].lower()]
-    return mock_facilities
+
+    for keywords, specialty in rules:
+        if any(word in t for word in keywords):
+            return specialty
+
+    return "General Physician"
 
 
-# -----------------------------------------------------------------------------
-# Clinical AI Triage Logic
-# -----------------------------------------------------------------------------
-def evaluate_triage(symptom_text, severity):
-    text = symptom_text.lower()
-    emergency_keywords = ['chest pain', 'heart attack', 'cannot breathe', 'shortness of breath', 'stroke', 'slurred speech', 'unconscious', 'seizure', 'severe bleeding']
-    urgent_keywords = ['high fever', 'deep cut', 'fracture', 'severe migraine', 'vomiting blood', 'burning urination', 'asthma', 'sprain']
-    
-    if any(k in text for k in emergency_keywords) or severity >= 9:
+def assess_symptoms(text, severity):
+    t = text.lower()
+
+    emergency_terms = [
+        "chest pain", "heart attack", "cannot breathe",
+        "can't breathe", "difficulty breathing",
+        "shortness of breath", "unconscious",
+        "severe bleeding", "stroke", "slurred speech",
+        "face drooping", "sudden weakness", "seizure",
+        "overdose", "choking"
+    ]
+
+    urgent_terms = [
+        "high fever", "vomiting blood", "blood in stool",
+        "severe abdominal pain", "fracture",
+        "severe dehydration", "persistent vomiting"
+    ]
+
+    if any(term in t for term in emergency_terms):
         return {
             "level": "Emergency",
-            "badge_class": "badge-emergency",
-            "title": "🚨 Immediate Emergency Medical Attention Required",
-            "desc": "Your symptoms indicate acute or life-threatening distress.",
-            "action": "Call 911 / 112 immediately or proceed to the nearest Hospital Emergency Room.",
-            "care": "Do NOT drive yourself. Sit upright, rest, and keep someone with you.",
-            "questions": ["What immediate diagnostic tests (ECG, CT) are being performed?", "What warning signs should family monitor?"]
-        }
-    elif any(k in text for k in urgent_keywords) or severity >= 7:
-        return {
-            "level": "Urgent Care",
-            "badge_class": "badge-urgent",
-            "title": "⚡ Same-Day Urgent Care Visit Recommended",
-            "desc": "Your symptoms warrant professional clinical evaluation today.",
-            "action": "Visit a nearby Urgent Care center or Walk-in clinic within 4-8 hours.",
-            "care": "Stay hydrated with electrolytes, rest in a calm area, avoid physical exertion.",
-            "questions": ["Are prescription antibiotics or anti-inflammatories required?", "Is an X-ray or ultrasound recommended?"]
-        }
-    elif severity >= 4:
-        return {
-            "level": "Primary Care",
-            "badge_class": "badge-doctor",
-            "title": "🩺 Consult Your Primary Care Physician / GP",
-            "desc": "Your condition is manageable but should be checked by a doctor within 24-48 hours.",
-            "action": "Schedule a clinic or telehealth appointment with your doctor.",
-            "care": "Monitor temperature and note any symptom triggers.",
-            "questions": ["What could be the root cause of these recurring symptoms?", "What lifestyle or OTC medications do you suggest?"]
-        }
-    else:
-        return {
-            "level": "Home Care",
-            "badge_class": "badge-self",
-            "title": "🟢 Home Care & Rest",
-            "desc": "Symptoms are currently mild. Supportive home recovery is suitable.",
-            "action": "Follow supportive home-care protocols and re-assess in 48 hours.",
-            "care": "Get 8+ hours of restful sleep, drink plenty of warm fluids, and stay comfortable.",
-            "questions": ["How many days should I wait before seeking an in-person visit if it does not clear?"]
+            "class": "result-emergency",
+            "title": "Immediate emergency assistance may be needed",
+            "description": "Some reported symptoms can indicate a time-critical condition.",
+            "action": "Call 112 now or seek the nearest emergency department. Do not drive yourself."
         }
 
+    if severity >= 9:
+        return {
+            "level": "Emergency",
+            "class": "result-emergency",
+            "title": "Severe pain reported",
+            "description": "Very severe pain needs prompt professional assessment.",
+            "action": "Seek urgent emergency assessment. Call 112 if you cannot safely travel or have other emergency symptoms."
+        }
 
-# -----------------------------------------------------------------------------
-# Sidebar: Mode Switcher & Patient Profile
-# -----------------------------------------------------------------------------
+    if any(term in t for term in urgent_terms) or severity >= 7:
+        return {
+            "level": "Urgent",
+            "class": "result-urgent",
+            "title": "Prompt medical assessment recommended",
+            "description": "Your reported symptoms or pain level suggest that you should be assessed promptly.",
+            "action": "Contact a qualified doctor or visit an appropriate hospital today."
+        }
+
+    if severity >= 4:
+        return {
+            "level": "Doctor consultation",
+            "class": "result-doctor",
+            "title": "Consider consulting a doctor",
+            "description": "A healthcare professional can assess persistent or worsening symptoms.",
+            "action": "Arrange a consultation with a general physician or relevant specialist."
+        }
+
+    return {
+        "level": "Self-care guidance",
+        "class": "result-self",
+        "title": "Monitor symptoms and take care",
+        "description": "The information entered does not indicate an obvious emergency trigger in this prototype.",
+        "action": "Monitor your symptoms and seek medical advice if they persist or worsen."
+    }
+
+
+def maps_url(query, location):
+    search = f"{query} near {location}" if location.strip() else query
+    return "https://www.google.com/maps/search/?api=1&query=" + quote_plus(search)
+
+
+def doctor_url(specialty, location):
+    return maps_url(specialty, location)
+
+
+# -------------------- SIDEBAR -------------------------------
+
 with st.sidebar:
-    st.markdown("### ✚ **IASOKA-AI**")
-    st.caption("Universal Healthcare & Triage Portal")
-    
-    # Age Mode Switcher
+    st.markdown("## ✚ IASOKA-AI")
+    st.caption("Intelligent Healthcare Assistance")
     st.markdown("---")
-    st.markdown("#### 🎯 **Accessibility & Age Mode**")
-    selected_mode = st.radio(
-        "Choose Your Preferred Experience:",
-        ["🩺 Standard", "👓 Senior Care", "🧸 Kids Mode"],
-        index=0 if st.session_state.age_mode == "Standard" else (1 if st.session_state.age_mode == "Senior Care" else 2)
+
+    st.markdown("### Patient preferences")
+    st.session_state.age_mode = st.radio(
+        "Experience mode",
+        ["Standard", "Senior Care", "Kids Mode"]
     )
-    st.session_state.age_mode = selected_mode.split(" ")[1]
-    
-    # Backend Status
-    st.markdown("---")
-    is_online = check_backend_status()
-    if is_online:
-        st.success("● FastAPI Backend: Connected")
-    else:
-        st.info("○ Standalone Demo Mode Active (FastAPI offline)")
-        
-    # User Profile / Auth Section
-    st.markdown("---")
-    st.markdown("#### 👤 **User Account**")
-    if st.session_state.user_info:
-        user_name = st.session_state.user_info.get("user_metadata", {}).get("full_name") or st.session_state.user_info.get("email", "Patient")
-        st.success(f"Signed in as **{user_name}**")
-        if st.button("🚪 Log Out", use_container_width=True):
-            st.session_state.auth_token = None
-            st.session_state.user_info = None
-            st.rerun()
-    else:
-        with st.expander("🔐 Sign In / Register", expanded=False):
-            auth_tab1, auth_tab2 = st.tabs(["Login", "Sign Up"])
-            with auth_tab1:
-                log_email = st.text_input("Email", key="log_email")
-                log_pass = st.text_input("Password", type="password", key="log_pass")
-                if st.button("Log In", use_container_width=True):
-                    if log_email and log_pass:
-                        ok, msg = api_login(log_email, log_pass)
-                        if ok: st.rerun()
-                        else: st.error(msg)
-            with auth_tab2:
-                reg_name = st.text_input("Full Name", key="reg_name")
-                reg_email = st.text_input("Email", key="reg_email")
-                reg_pass = st.text_input("Password", type="password", key="reg_pass")
-                if st.button("Create Account", use_container_width=True):
-                    if reg_email and reg_pass:
-                        ok, msg = api_signup(reg_email, reg_pass, reg_name, st.session_state.age_mode)
-                        if ok: st.rerun()
-                        else: st.error(msg)
 
+    st.markdown("---")
+    st.markdown("### 📍 Your location")
+    st.session_state.location = st.text_input(
+        "City / Area / PIN code",
+        value=st.session_state.location,
+        placeholder="e.g. Vaishali, Ghaziabad"
+    )
+    st.caption("Your location is entered manually. IASOKA-AI does not automatically track GPS.")
 
-# -----------------------------------------------------------------------------
-# Top Emergency SOS Banner
-# -----------------------------------------------------------------------------
+    st.markdown("---")
+    if backend_status():
+        st.success("Backend connected")
+    else:
+        st.warning("Demo mode: backend unavailable")
+
+    st.markdown("---")
+    st.markdown("### Emergency contacts")
+    st.markdown("**112 — All-in-one emergency**")
+    st.markdown("[📞 Call 112](tel:112)")
+    st.markdown("**108 — Ambulance emergency service**")
+    st.markdown("[📞 Call 108](tel:108)")
+    st.markdown("**102 — National Ambulance Service**")
+    st.markdown("[📞 Call 102](tel:102)")
+    st.caption("Ambulance service availability and eligibility may vary by state. Use 112 for immediate emergencies.")
+
+# -------------------- HEADER --------------------------------
+
+st.markdown('<div class="main-title">IASOKA-AI</div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="sub-title">Multimodal AI for Intelligent Healthcare Assistance · India Edition</div>',
+    unsafe_allow_html=True
+)
+
 st.markdown("""
-<div class="emergency-banner">
-    <div>🚨 <strong>Life-Threatening Emergency?</strong> Severe chest pain, sudden numbness, or choking?</div>
-    <div><a href="tel:911" style="background-color: white; color: #dc2626; padding: 6px 16px; border-radius: 999px; text-decoration: none; font-weight: 900;">CALL 911 / 112</a></div>
+<div class="hero">
+    <h2>Your health. Better understood.</h2>
+    <p>Describe symptoms, review general urgency guidance and discover healthcare options near your location.</p>
 </div>
 """, unsafe_allow_html=True)
 
+st.markdown("""
+<div class="emergency">
+    <h3>🚨 Medical emergency?</h3>
+    <p>For severe chest pain, serious breathing difficulty, unconsciousness, stroke symptoms or life-threatening injury, call <b>112</b> immediately.</p>
+    <p style="margin-top:10px;">
+        <a href="tel:112" style="background:#dc2626;color:white;padding:9px 18px;border-radius:9px;text-decoration:none;font-weight:800;">CALL 112</a>
+        &nbsp;&nbsp;
+        <a href="tel:108" style="background:#7f1d1d;color:white;padding:9px 18px;border-radius:9px;text-decoration:none;font-weight:800;">AMBULANCE 108</a>
+    </p>
+</div>
+""", unsafe_allow_html=True)
 
-# -----------------------------------------------------------------------------
-# Dynamic Age Banner
-# -----------------------------------------------------------------------------
-if st.session_state.age_mode == "Kids":
-    st.markdown("""
-    <div class="kid-bubble">
-        <h3 style="color: #065f46; margin:0;">🦉 Dr. Iasoka the Owl says:</h3>
-        <p style="color: #047857; margin: 4px 0 0 0; font-size: 1.1rem;">
-            "Hello little friend! Pick where it feels hurt or icky on the body buttons below, and we'll help you feel all better!"
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-elif st.session_state.age_mode == "Senior":
-    st.markdown("""
-    <div class="card-box senior-text" style="background-color: #fef3c7; border-color: #fde68a;">
-        📢 <strong>Senior Care Mode:</strong> High visibility & large typography enabled. Take your time to review each step below.
-    </div>
-    """, unsafe_allow_html=True)
+# -------------------- TOP METRICS ---------------------------
 
+m1, m2, m3 = st.columns(3)
+with m1:
+    st.markdown('<div class="metric-card"><div class="metric-label">Emergency response</div><div class="metric-value">112</div><div class="small-muted">Pan-India emergency number</div></div>', unsafe_allow_html=True)
+with m2:
+    st.markdown('<div class="metric-card"><div class="metric-label">Ambulance support</div><div class="metric-value">108 / 102</div><div class="small-muted">State-dependent services</div></div>', unsafe_allow_html=True)
+with m3:
+    st.markdown('<div class="metric-card"><div class="metric-label">Your selected area</div><div class="metric-value" style="font-size:1.2rem;">' + (st.session_state.location or "Not entered") + '</div><div class="small-muted">Used for map searches</div></div>', unsafe_allow_html=True)
 
-# -----------------------------------------------------------------------------
-# Main Application Tabs
-# -----------------------------------------------------------------------------
-tab_symptoms, tab_facilities, tab_medical_id = st.tabs([
-    "📍 1. Symptom Assessment & Body Map",
-    "🏥 2. Healthcare Facilities Directory",
-    "📇 3. Medical Emergency ID & History"
+st.write("")
+
+# -------------------- MAIN TABS -----------------------------
+
+tab_assess, tab_care, tab_history, tab_profile = st.tabs([
+    "🩺 Symptom Assessment",
+    "🏥 Find Healthcare",
+    "📋 Health History",
+    "🪪 Medical ID"
 ])
 
-# -----------------------------------------------------------------------------
-# TAB 1: Symptom Assessment & Interactive Body Map
-# -----------------------------------------------------------------------------
-with tab_symptoms:
-    st.markdown("## **Interactive Symptom & Pain Visualizer**")
-    st.caption("Select your affected body region, adjust the pain scale, and generate your instant AI clinical triage report.")
-    
-    col_left, col_right = st.columns([5, 7])
-    
-    with col_left:
-        st.markdown("#### 👤 **1. Select Body Region**")
-        body_regions = {
-            "🧠 Head & Face": ["Throbbing Headache", "Migraine / Light Sensitivity", "Dizziness / Vertigo", "Sinus Congestion"],
-            "🗣️ Throat & Neck": ["Sore Throat", "Pain When Swallowing", "Swollen Glands", "Stiff Neck"],
-            "🫀 Chest & Heart": ["Chest Tightness", "Shortness of Breath", "Rapid Heart Rate", "Persistent Cough"],
-            "🩹 Stomach & Abdomen": ["Stomach Cramps", "Nausea or Vomiting", "Acid Reflux / Heartburn", "Bloating"],
-            "🦴 Spine & Back": ["Lower Back Ache", "Upper Back Tension", "Sciatica Nerve Pain", "Stiff Spine"],
-            "💪 Arms & Shoulders": ["Shoulder Strain", "Elbow Joint Pain", "Arm Weakness or Numbness"],
-            "🦵 Legs & Knees": ["Knee Joint Pain", "Swollen Knee", "Hamstring Soreness", "Leg Cramps"],
-            "🦶 Ankles & Feet": ["Ankle Sprain", "Heel Pain / Plantar Fasciitis", "Swollen Ankles"],
-            "🌐 Whole Body / General": ["High Fever & Chills", "Extreme Fatigue", "Body Aches / Flu", "Skin Rash"]
-        }
-        
-        selected_region_label = st.selectbox("Choose Affected Area:", list(body_regions.keys()), index=0)
-        clean_region_name = selected_region_label.split(" ", 1)[1]
-        
-        st.markdown("##### **Common Symptoms for this Area:**")
-        preset_symptoms = body_regions[selected_region_label]
-        selected_presets = []
-        preset_cols = st.columns(2)
-        for i, symptom in enumerate(preset_symptoms):
-            if preset_cols[i % 2].button(f"+ {symptom}", key=f"btn_sym_{i}", use_container_width=True):
-                selected_presets.append(symptom)
+# ============================================================
+# TAB 1: SYMPTOM ASSESSMENT
+# ============================================================
 
-    with col_right:
-        st.markdown("#### 📝 **2. Describe Symptoms & Severity**")
-        
-        default_text = ", ".join(selected_presets) if selected_presets else ""
-        symptom_description = st.text_area(
-            "What symptoms are you experiencing?",
-            value=default_text,
-            placeholder="e.g. I have had a severe throbbing headache since yesterday morning with mild nausea...",
-            height=110
-        )
-        
-        # Wong-Baker Pain Scale Slider
-        st.markdown("#### 📊 **3. Pain Intensity (Wong-Baker Scale 0–10)**")
-        pain_emojis = ["😄", "🙂", "🙂", "😐", "😐", "🙁", "🙁", "😣", "😣", "😭", "😭"]
-        pain_labels = [
-            "0 - No Hurt", "1 - Very Mild", "2 - Mild Discomfort", "3 - Uncomfortable",
-            "4 - Moderate Pain", "5 - Moderately Strong", "6 - Strong", "7 - Very Strong",
-            "8 - Intense Pain", "9 - Excruciating", "10 - Worst Pain Possible"
+with tab_assess:
+    st.markdown("## Symptom assessment")
+    st.caption("Share what you are experiencing. This prototype provides general urgency guidance, not a diagnosis.")
+
+    left, right = st.columns([1, 1])
+
+    with left:
+        regions = [
+            "Head & Face",
+            "Throat & Neck",
+            "Chest & Heart",
+            "Stomach & Abdomen",
+            "Back & Spine",
+            "Arms & Shoulders",
+            "Legs & Knees",
+            "Feet & Ankles",
+            "Whole Body"
         ]
-        
-        pain_val = st.slider("Slide to rate pain level:", 0, 10, 4)
-        st.markdown(f"### {pain_emojis[pain_val]} **{pain_labels[pain_val]}**")
-        
-        # Duration selector
-        duration_val = st.selectbox(
-            "How long have you felt these symptoms?",
-            ["Just started (few hours)", "1 – 2 days", "3 – 7 days", "More than 1 week", "Chronic / Recurring"]
+
+        region = st.selectbox("Where are you experiencing symptoms?", regions)
+
+        symptom_text = st.text_area(
+            "Describe your symptoms",
+            placeholder="Example: I have had a headache and mild nausea since yesterday...",
+            height=150
         )
-        
-        st.markdown("<br>", unsafe_allow_html=True)
-        submit_btn = st.button("🩺 **Get AI Clinical Assessment & Triage Report**", type="primary", use_container_width=True)
 
-    # Triage Assessment Result Section
-    if submit_btn:
-        if not symptom_description.strip():
-            st.warning("⚠️ Please describe your symptoms before running the assessment.")
+    with right:
+        severity = st.slider("Pain / discomfort level", 0, 10, 3)
+        duration = st.selectbox(
+            "How long have you experienced this?",
+            [
+                "Just started",
+                "1–2 days",
+                "3–7 days",
+                "More than a week",
+                "Recurring / chronic"
+            ]
+        )
+
+        age = st.selectbox(
+            "Age group",
+            ["Under 18", "18–40", "41–60", "Above 60", "Prefer not to say"]
+        )
+
+        st.info("If you are experiencing a medical emergency, do not wait for this assessment. Call 112.")
+
+    if st.button("Generate my assessment", type="primary", use_container_width=True):
+        if not symptom_text.strip():
+            st.warning("Please describe your symptoms first.")
         else:
-            with st.spinner("Analyzing symptoms & connecting to IASOKA-AI triage engine..."):
-                # Call backend API
-                api_submit_symptoms(symptom_description, clean_region_name, pain_val, duration_val, st.session_state.age_mode)
-                triage = evaluate_triage(symptom_description, pain_val)
-                
-                st.markdown("---")
-                st.markdown("### 📋 **IASOKA-AI Clinical Triage Report**")
-                
-                st.markdown(f"""
-                <div class="card-box" style="border-left: 6px solid #2563eb;">
-                    <span class="triage-badge {triage['badge_class']}">{triage['level']}</span>
-                    <h3 style="margin-top: 10px;">{triage['title']}</h3>
-                    <p style="color: #475569; font-size: 1.05rem;">{triage['desc']}</p>
-                    <div style="background-color: #f8fafc; padding: 14px; border-radius: 10px; margin-top: 12px; border: 1px solid #e2e8f0;">
-                        <strong>Recommended Next Action:</strong> <span style="color: #2563eb; font-weight: bold;">{triage['action']}</span><br>
-                        <strong style="color: #334155;">Supportive Home Care:</strong> {triage['care']}
-                    </div>
+            triage = assess_symptoms(symptom_text, severity)
+            specialty = identify_specialty(symptom_text)
+
+            st.session_state.last_triage = triage
+            st.session_state.last_symptoms = symptom_text
+            st.session_state.last_specialty = specialty
+
+            entry = {
+                "date": datetime.now().strftime("%d %b %Y, %I:%M %p"),
+                "region": region,
+                "symptoms": symptom_text,
+                "severity": severity,
+                "duration": duration,
+                "level": triage["level"],
+                "specialty": specialty
+            }
+            st.session_state.history.insert(0, entry)
+
+            save_symptom(symptom_text, region, severity, duration)
+
+    if st.session_state.last_triage:
+        triage = st.session_state.last_triage
+        st.markdown("---")
+        st.markdown("### Your assessment summary")
+
+        st.markdown(
+            f"""
+            <div class="{triage['class']}">
+                <div style="font-size:.8rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;">
+                    {triage['level']}
                 </div>
-                """, unsafe_allow_html=True)
-                
-                st.markdown("#### 🩺 **Questions to Ask Your Doctor:**")
-                for q in triage["questions"]:
-                    st.markdown(f"- **{q}**")
-                
-                st.caption("⚠️ **Medical Disclaimer:** IASOKA-AI provides supportive triage guidance and does not replace professional diagnosis. Call emergency services immediately if you experience chest pain or severe breathing difficulty.")
+                <h3>{triage['title']}</h3>
+                <p>{triage['description']}</p>
+                <b>Suggested next step:</b> {triage['action']}
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
+        st.write("")
+        st.markdown("#### Suggested doctor specialty")
+        st.info(
+            f"Based on the words entered, you may wish to search for a **{st.session_state.last_specialty}**."
+        )
+        st.caption("This is a keyword-based suggestion, not a medical diagnosis or a determination of which specialist you need.")
 
-# -----------------------------------------------------------------------------
-# TAB 2: Healthcare Facilities Directory
-# -----------------------------------------------------------------------------
-with tab_facilities:
-    st.markdown("## 🏥 **Healthcare Facilities & Urgent Care Locator**")
-    st.caption("Filter hospitals, urgent care centers, pediatric clinics, and 24/7 pharmacies nearby.")
-    
-    facility_filter = st.radio(
-        "Filter by Facility Type:",
-        ["All", "Hospital", "Urgent Care", "Pediatrics", "Clinic", "Pharmacy"],
-        horizontal=True
+        if st.session_state.location:
+            st.link_button(
+                f"Find {st.session_state.last_specialty}s near {st.session_state.location}",
+                doctor_url(st.session_state.last_specialty, st.session_state.location),
+                use_container_width=True
+            )
+        else:
+            st.warning("Enter your city or area in the sidebar to find relevant doctors.")
+
+        st.caption(
+            "Important: This prototype uses predefined symptom rules. It is not a trained or clinically validated diagnostic model. A qualified healthcare professional must assess medical concerns."
+        )
+
+# ============================================================
+# TAB 2: HEALTHCARE DISCOVERY
+# ============================================================
+
+with tab_care:
+    st.markdown("## Healthcare discovery")
+    st.caption("Search for hospitals, emergency departments, clinics and specialists around your selected area.")
+
+    location = st.text_input(
+        "Search location",
+        value=st.session_state.location,
+        placeholder="Enter area, city or PIN code"
     )
-    
-    facilities_list = api_get_facilities(facility_filter)
-    
-    f_cols = st.columns(3)
-    for idx, fac in enumerate(facilities_list):
-        with f_cols[idx % 3]:
-            st.markdown(f"""
-            <div class="card-box">
-                <span class="triage-badge badge-doctor">{fac.get('type', 'Medical Center')}</span>
-                <h4 style="margin: 8px 0 4px 0;">{fac['name']}</h4>
-                <p style="color: #64748b; font-size: 0.85rem; margin-bottom: 8px;">📍 {fac['address']}</p>
-                <div style="font-size: 0.85rem; color: #334155; margin-bottom: 12px;">
-                    ⭐ <strong>{fac.get('rating', 4.8)}</strong> • ⏱️ Wait: <strong>{fac.get('wait_time', '15 mins')}</strong>
-                    { ' • 🚨 <strong>24/7 ER</strong>' if fac.get('emergency_24_7') else '' }
-                </div>
-                <a href="tel:{fac.get('phone', '911')}" style="display: block; text-align: center; background-color: #2563eb; color: white; padding: 8px 12px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 0.9rem;">📞 Call {fac.get('phone', 'Facility')}</a>
-            </div>
-            """, unsafe_allow_html=True)
+    if location != st.session_state.location:
+        st.session_state.location = location
 
+    if not location.strip():
+        st.warning("Enter a location to generate nearby healthcare searches.")
+    else:
+        st.markdown("### Hospitals and emergency care")
+        st.write("Use these live map searches to see current facilities, directions, contact details and reviews.")
 
-# -----------------------------------------------------------------------------
-# TAB 3: Medical Emergency ID & History
-# -----------------------------------------------------------------------------
-with tab_medical_id:
-    st.markdown("## 📇 **Patient Emergency Medical ID & History**")
-    
-    col_id, col_hist = st.columns([5, 7])
-    
-    with col_id:
-        st.markdown("#### 🚨 **Emergency Medical ID Badge**")
-        st.markdown("""
-        <div style="background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%); color: white; padding: 22px; border-radius: 20px; box-shadow: 0 8px 20px rgba(0,0,0,0.15);">
-            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #334155; padding-bottom: 8px; margin-bottom: 14px;">
-                <span style="font-weight: 900; letter-spacing: 1px; color: #c7d2fe;">EMERGENCY MEDICAL ID</span>
-                <span style="background-color: #dc2626; color: white; padding: 2px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: bold;">SOS</span>
+        c1, c2 = st.columns(2)
+        with c1:
+            st.link_button(
+                "🏥 Nearby hospitals",
+                maps_url("Hospitals", location),
+                use_container_width=True
+            )
+            st.link_button(
+                "🚑 Emergency departments",
+                maps_url("24 hour emergency hospital", location),
+                use_container_width=True
+            )
+            st.link_button(
+                "🧪 Diagnostic centres",
+                maps_url("Diagnostic laboratory and imaging centre", location),
+                use_container_width=True
+            )
+
+        with c2:
+            st.link_button(
+                "💊 Pharmacies",
+                maps_url("Pharmacy", location),
+                use_container_width=True
+            )
+            st.link_button(
+                "🩺 General physicians",
+                maps_url("General physician", location),
+                use_container_width=True
+            )
+            st.link_button(
+                "🩻 Multispeciality hospitals",
+                maps_url("Multispeciality hospital", location),
+                use_container_width=True
+            )
+
+        st.markdown("---")
+        st.markdown("### Specialist discovery")
+
+        specialties = [
+            "Cardiologist",
+            "Neurologist",
+            "Dermatologist",
+            "Gastroenterologist",
+            "Pulmonologist",
+            "Orthopedic Doctor",
+            "Ophthalmologist",
+            "ENT Specialist",
+            "Gynaecologist",
+            "Paediatrician",
+            "General Physician"
+        ]
+
+        selected_specialty = st.selectbox(
+            "Choose a doctor specialty",
+            specialties,
+            index=specialties.index(st.session_state.last_specialty)
+            if st.session_state.last_specialty in specialties else 10
+        )
+
+        st.link_button(
+            f"Find {selected_specialty}s near {location}",
+            doctor_url(selected_specialty, location),
+            use_container_width=True
+        )
+
+        if st.session_state.last_symptoms:
+            st.markdown("#### Based on your last assessment")
+            st.success(
+                f"Suggested specialty: {st.session_state.last_specialty}"
+            )
+            st.link_button(
+                "Find suggested specialists on Maps",
+                doctor_url(st.session_state.last_specialty, location),
+                use_container_width=True
+            )
+
+        st.caption("Map results are supplied by Google Maps. Check the hospital's emergency availability, services, distance and contact details directly before travelling. IASOKA-AI does not rank or certify hospitals.")
+
+    st.markdown("---")
+    st.markdown("### Emergency helplines in India")
+
+    e1, e2, e3 = st.columns(3)
+    with e1:
+        st.markdown("#### 112")
+        st.write("Integrated emergency response")
+        st.link_button("Call 112", "tel:112", use_container_width=True)
+    with e2:
+        st.markdown("#### 108")
+        st.write("Emergency ambulance service")
+        st.link_button("Call 108", "tel:108", use_container_width=True)
+    with e3:
+        st.markdown("#### 102")
+        st.write("National Ambulance Service")
+        st.link_button("Call 102", "tel:102", use_container_width=True)
+
+    st.caption("112 is the primary pan-India emergency number. 108 and 102 services vary in availability and function across states. In a life-threatening emergency, call 112.")
+
+# ============================================================
+# TAB 3: HEALTH HISTORY
+# ============================================================
+
+with tab_history:
+    st.markdown("## Your symptom history")
+    st.caption("Reports entered during this browser session.")
+
+    if not st.session_state.history:
+        st.info("No symptom reports yet. Complete an assessment to see it here.")
+    else:
+        for item in st.session_state.history:
+            with st.expander(
+                f"{item['date']} · {item['level']} · Pain {item['severity']}/10"
+            ):
+                st.write("**Affected area:**", item["region"])
+                st.write("**Symptoms:**", item["symptoms"])
+                st.write("**Duration:**", item["duration"])
+                st.write("**Suggested specialty:**", item["specialty"])
+
+    if st.button("Clear session history"):
+        st.session_state.history = []
+        st.session_state.last_triage = None
+        st.session_state.last_symptoms = ""
+        st.rerun()
+
+    st.caption("Session history is temporary and may be lost when the session ends. Do not enter sensitive medical information into this demonstration.")
+
+# ============================================================
+# TAB 4: MEDICAL ID
+# ============================================================
+
+with tab_profile:
+    st.markdown("## Patient medical ID")
+    st.caption("Add optional information for a demonstration medical profile. Do not use this as a substitute for an official medical ID.")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.session_state.patient_name = st.text_input(
+            "Patient name",
+            value=st.session_state.patient_name
+        )
+        st.session_state.blood_group = st.selectbox(
+            "Blood group",
+            [
+                "Not provided", "A+", "A-", "B+", "B-",
+                "AB+", "AB-", "O+", "O-"
+            ],
+            index=[
+                "Not provided", "A+", "A-", "B+", "B-",
+                "AB+", "AB-", "O+", "O-"
+            ].index(st.session_state.blood_group)
+        )
+
+    with col2:
+        st.session_state.emergency_contact = st.text_input(
+            "Emergency contact number",
+            value=st.session_state.emergency_contact,
+            placeholder="+91 XXXXX XXXXX"
+        )
+        st.session_state.allergies = st.text_input(
+            "Known allergies",
+            value=st.session_state.allergies
+        )
+
+    st.session_state.medications = st.text_area(
+        "Current medications (optional)",
+        value=st.session_state.medications
+    )
+
+    st.markdown("---")
+    st.markdown("### Emergency medical ID preview")
+
+    st.markdown(
+        f"""
+        <div style="
+            background:linear-gradient(130deg,#10243b,#164e63);
+            color:white;padding:26px;border-radius:18px;
+            border:1px solid #31536c;
+        ">
+            <div style="font-size:.8rem;letter-spacing:2px;color:#b8d8e8;font-weight:800;">
+                IASOKA-AI · MEDICAL ID
             </div>
-            <p style="margin: 6px 0; font-size: 0.9rem;"><strong>Blood Group:</strong> <span style="color: #4ade80;">O Positive (O+)</span></p>
-            <p style="margin: 6px 0; font-size: 0.9rem;"><strong>Known Allergies:</strong> <span style="color: #fde047;">Penicillin, Peanuts</span></p>
-            <p style="margin: 6px 0; font-size: 0.9rem;"><strong>Current Medications:</strong> Albuterol Inhaler</p>
-            <p style="margin: 6px 0; font-size: 0.9rem;"><strong>Emergency Contact:</strong> (555) 912-8834 (Family)</p>
-            <p style="margin: 6px 0; font-size: 0.9rem;"><strong>Primary Physician:</strong> Dr. Sarah Jenkins, MD</p>
+            <h2 style="color:white;margin-top:12px;">
+                {st.session_state.patient_name or "Patient Name"}
+            </h2>
+            <p style="color:#d7e9f3;">
+                Blood group: <b>{st.session_state.blood_group}</b>
+            </p>
+            <p style="color:#d7e9f3;">
+                Allergies: <b>{st.session_state.allergies or "Not provided"}</b>
+            </p>
+            <p style="color:#d7e9f3;">
+                Medications: <b>{st.session_state.medications or "Not provided"}</b>
+            </p>
+            <p style="color:#d7e9f3;">
+                Emergency contact: <b>{st.session_state.emergency_contact or "Not provided"}</b>
+            </p>
+            <div style="background:#dc2626;padding:10px 14px;border-radius:9px;display:inline-block;margin-top:10px;">
+                <b>Emergency in India: 112</b>
+            </div>
         </div>
-        """, unsafe_allow_html=True)
-        
-    with col_hist:
-        st.markdown("#### 📋 **Recent Symptom Logs**")
-        for item in st.session_state.local_history:
-            st.markdown(f"""
-            <div class="card-box" style="padding: 14px; margin-bottom: 10px;">
-                <div style="display: flex; justify-content: space-between;">
-                    <strong>{item.get('body_part', 'General')}</strong>
-                    <span style="color: #64748b; font-size: 0.8rem;">{item.get('created_at', 'Recent')}</span>
-                </div>
-                <p style="color: #475569; font-size: 0.9rem; margin: 4px 0;">{item.get('symptom_text', '')}</p>
-                <span style="font-size: 0.8rem; color: #64748b;">Pain: <strong>{item.get('severity', 4)}/10</strong> • Duration: <strong>{item.get('duration', '1-2 days')}</strong></span>
-            </div>
-            """, unsafe_allow_html=True)
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.caption("This preview is stored only in the current Streamlit session. It is not a verified medical record or a secure emergency service.")
+
+# -------------------- FOOTER --------------------------------
+
+st.markdown("---")
+st.markdown(
+    "<div style='text-align:center;color:#64748b;font-size:.85rem;'>"
+    "<b>IASOKA-AI</b> · Intelligent Healthcare Assistance<br>"
+    "Academic prototype · Not a medical device · Not a diagnosis · "
+    "Not clinically validated<br>"
+    "For emergencies in India, call 112."
+    "</div>",
+    unsafe_allow_html=True
+)
